@@ -1,0 +1,728 @@
+# =====================================================================
+#  Food Store - pruebas de todos los endpoints (extensión REST Client de VS Code)
+#  Requisitos: backend corriendo en http://localhost:8000 y seed cargado.
+#  Ejecutar las peticiones EN ORDEN, de arriba hacia abajo: REST Client guarda
+#  la cookie access_token del login y la manda sola en las siguientes.
+#  En cada petición está el código de respuesta esperado.
+# =====================================================================
+
+@baseUrl = http://localhost:8000/api/v1
+@adminUser = admin
+@adminPass = Admin1234!
+@clientePass = Cliente1234
+
+# ---------------------------------------------------------------------
+# 1. AUTH
+# ---------------------------------------------------------------------
+
+### Perfil sin sesión
+# esperado: 401
+GET {{baseUrl}}/auth/me
+
+### Registro de un cliente nuevo (rol user)
+# @name registro
+# esperado: 201
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "username": "cliente{{$timestamp}}",
+  "full_name": "Cliente de Prueba",
+  "email": "cliente{{$timestamp}}@mail.com",
+  "password": "{{clientePass}}"
+}
+
+### Registro con username repetido
+# esperado: 409
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "username": "{{registro.response.body.$.username}}",
+  "full_name": "Otro",
+  "email": "otro{{$timestamp}}@mail.com",
+  "password": "{{clientePass}}"
+}
+
+### Registro con email repetido
+# esperado: 409
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "username": "otro{{$timestamp}}",
+  "full_name": "Otro",
+  "email": "{{registro.response.body.$.email}}",
+  "password": "{{clientePass}}"
+}
+
+### Registro con contraseña corta (mínimo 8)
+# esperado: 422
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "username": "corto{{$timestamp}}",
+  "full_name": "Corto",
+  "email": "corto{{$timestamp}}@mail.com",
+  "password": "123"
+}
+
+### Login con contraseña incorrecta
+# esperado: 401
+POST {{baseUrl}}/auth/token
+Content-Type: application/x-www-form-urlencoded
+
+username={{adminUser}}&password=incorrecta
+
+### Login como admin (la cookie HttpOnly viene en Set-Cookie; el cuerpo no trae el token)
+# esperado: 200
+POST {{baseUrl}}/auth/token
+Content-Type: application/x-www-form-urlencoded
+
+username={{adminUser}}&password={{adminPass}}
+
+### Perfil del admin
+# @name meAdmin
+# esperado: 200
+GET {{baseUrl}}/auth/me
+
+# ---------------------------------------------------------------------
+# 2. USUARIOS (admin)
+# ---------------------------------------------------------------------
+
+### Listado de usuarios
+# esperado: 200
+GET {{baseUrl}}/admin/usuarios
+
+### El admin no puede desactivarse a sí mismo
+# esperado: 400
+POST {{baseUrl}}/admin/usuarios/{{meAdmin.response.body.$.id}}/desactivar
+
+### Activar un usuario inexistente
+# esperado: 404
+POST {{baseUrl}}/admin/usuarios/999999/activar
+
+### Desactivar un usuario inexistente
+# esperado: 404
+POST {{baseUrl}}/admin/usuarios/999999/desactivar
+
+# ---------------------------------------------------------------------
+# 3. CATEGORÍAS
+# ---------------------------------------------------------------------
+
+### Listado público (solo activas)
+# esperado: 200
+GET {{baseUrl}}/categorias
+
+### Crear categoría
+# @name nuevaCategoria
+# esperado: 201
+POST {{baseUrl}}/categorias
+Content-Type: application/json
+
+{
+  "nombre": "Ensaladas {{$timestamp}}",
+  "descripcion": "Categoría creada desde el .http"
+}
+
+### Crear categoría con nombre repetido
+# esperado: 409
+POST {{baseUrl}}/categorias
+Content-Type: application/json
+
+{
+  "nombre": "{{nuevaCategoria.response.body.$.nombre}}"
+}
+
+### Crear categoría con nombre de 1 caracter (mínimo 2)
+# esperado: 422
+POST {{baseUrl}}/categorias
+Content-Type: application/json
+
+{
+  "nombre": "A"
+}
+
+### Detalle de la categoría
+# esperado: 200
+GET {{baseUrl}}/categorias/{{nuevaCategoria.response.body.$.id}}
+
+### Actualización parcial (solo la descripción; el nombre se conserva)
+# esperado: 200
+PUT {{baseUrl}}/categorias/{{nuevaCategoria.response.body.$.id}}
+Content-Type: application/json
+
+{
+  "descripcion": "Descripción actualizada"
+}
+
+### Actualizar con el nombre de otra categoría existente
+# esperado: 409
+PUT {{baseUrl}}/categorias/{{nuevaCategoria.response.body.$.id}}
+Content-Type: application/json
+
+{
+  "nombre": "Pizzas"
+}
+
+### Categoría inexistente
+# esperado: 404
+GET {{baseUrl}}/categorias/999999
+
+# ---------------------------------------------------------------------
+# 4. PRODUCTOS
+# ---------------------------------------------------------------------
+
+### Listado paginado público
+# @name productosSeed
+# esperado: 200
+GET {{baseUrl}}/productos?skip=0&limit=5
+
+### Búsqueda por nombre sin distinguir mayúsculas
+# esperado: 200
+GET {{baseUrl}}/productos?search=PIZZA
+
+### Filtro por categoría y disponibilidad
+# esperado: 200
+GET {{baseUrl}}/productos?categoria_id={{productosSeed.response.body.$.items[0].categoria_id}}&disponible=true
+
+### limit mayor a 100
+# esperado: 422
+GET {{baseUrl}}/productos?limit=101
+
+### Crear producto
+# @name nuevoProducto
+# esperado: 201
+POST {{baseUrl}}/productos
+Content-Type: application/json
+
+{
+  "nombre": "Ensalada César",
+  "descripcion": "Lechuga, pollo, croutons y parmesano",
+  "precio_base": 5000,
+  "imagen_url": "https://images.unsplash.com/photo-1550304943-4f24f54ddde9?w=600",
+  "stock": 5,
+  "disponible": true,
+  "categoria_id": {{nuevaCategoria.response.body.$.id}}
+}
+
+### Crear producto con categoría inexistente
+# esperado: 404
+POST {{baseUrl}}/productos
+Content-Type: application/json
+
+{
+  "nombre": "Producto huérfano",
+  "precio_base": 100,
+  "categoria_id": 999999
+}
+
+### Crear producto con precio negativo
+# esperado: 422
+POST {{baseUrl}}/productos
+Content-Type: application/json
+
+{
+  "nombre": "Precio mal",
+  "precio_base": -1,
+  "categoria_id": {{nuevaCategoria.response.body.$.id}}
+}
+
+### Detalle del producto (con su categoría)
+# esperado: 200
+GET {{baseUrl}}/productos/{{nuevoProducto.response.body.$.id}}
+
+### PUT parcial: solo el precio
+# esperado: 200
+PUT {{baseUrl}}/productos/{{nuevoProducto.response.body.$.id}}
+Content-Type: application/json
+
+{
+  "precio_base": 5500
+}
+
+### PUT con una categoría inexistente
+# esperado: 404
+PUT {{baseUrl}}/productos/{{nuevoProducto.response.body.$.id}}
+Content-Type: application/json
+
+{
+  "categoria_id": 999999
+}
+
+### Cambio de stock y disponibilidad
+# esperado: 200
+PATCH {{baseUrl}}/productos/{{nuevoProducto.response.body.$.id}}/stock
+Content-Type: application/json
+
+{
+  "stock": 3,
+  "disponible": true
+}
+
+### Stock negativo
+# esperado: 422
+PATCH {{baseUrl}}/productos/{{nuevoProducto.response.body.$.id}}/stock
+Content-Type: application/json
+
+{
+  "stock": -1
+}
+
+# ---------------------------------------------------------------------
+# 5. PEDIDOS COMO CLIENTE
+# ---------------------------------------------------------------------
+
+### Logout del admin (borra la cookie)
+# esperado: 200
+POST {{baseUrl}}/auth/logout
+
+### Crear pedido sin sesión
+# esperado: 401
+POST {{baseUrl}}/pedidos
+Content-Type: application/json
+
+{
+  "items": [{ "producto_id": {{nuevoProducto.response.body.$.id}}, "cantidad": 1 }],
+  "forma_pago": "EFECTIVO",
+  "direccion_entrega": "Av. Siempre Viva 742"
+}
+
+### Login como el cliente registrado
+# esperado: 200
+POST {{baseUrl}}/auth/token
+Content-Type: application/x-www-form-urlencoded
+
+username={{registro.response.body.$.username}}&password={{clientePass}}
+
+### El cliente no puede listar usuarios
+# esperado: 403
+GET {{baseUrl}}/admin/usuarios
+
+### El cliente no puede crear categorías
+# esperado: 403
+POST {{baseUrl}}/categorias
+Content-Type: application/json
+
+{
+  "nombre": "No debería crearse"
+}
+
+### El cliente no ve el resumen
+# esperado: 403
+GET {{baseUrl}}/pedidos/resumen
+
+### Crear pedido (RN-01): descuenta stock y copia nombre y precio
+# @name pedido1
+# esperado: 201
+POST {{baseUrl}}/pedidos
+Content-Type: application/json
+
+{
+  "items": [
+    { "producto_id": {{nuevoProducto.response.body.$.id}}, "cantidad": 2 },
+    { "producto_id": {{productosSeed.response.body.$.items[0].id}}, "cantidad": 1 }
+  ],
+  "forma_pago": "TRANSFERENCIA",
+  "direccion_entrega": "Av. Siempre Viva 742",
+  "notas": "Tocar timbre 2B"
+}
+
+### El stock de la Ensalada bajó de 3 a 1
+# esperado: 200
+GET {{baseUrl}}/productos/{{nuevoProducto.response.body.$.id}}
+
+### Stock insuficiente
+# esperado: 400
+POST {{baseUrl}}/pedidos
+Content-Type: application/json
+
+{
+  "items": [{ "producto_id": {{nuevoProducto.response.body.$.id}}, "cantidad": 50 }],
+  "forma_pago": "EFECTIVO",
+  "direccion_entrega": "Av. Siempre Viva 742"
+}
+
+### Producto repetido en el pedido
+# esperado: 400
+POST {{baseUrl}}/pedidos
+Content-Type: application/json
+
+{
+  "items": [
+    { "producto_id": {{nuevoProducto.response.body.$.id}}, "cantidad": 1 },
+    { "producto_id": {{nuevoProducto.response.body.$.id}}, "cantidad": 1 }
+  ],
+  "forma_pago": "EFECTIVO",
+  "direccion_entrega": "Av. Siempre Viva 742"
+}
+
+### Producto inexistente
+# esperado: 404
+POST {{baseUrl}}/pedidos
+Content-Type: application/json
+
+{
+  "items": [{ "producto_id": 999999, "cantidad": 1 }],
+  "forma_pago": "EFECTIVO",
+  "direccion_entrega": "Av. Siempre Viva 742"
+}
+
+### Forma de pago inválida (RN-06)
+# esperado: 422
+POST {{baseUrl}}/pedidos
+Content-Type: application/json
+
+{
+  "items": [{ "producto_id": {{nuevoProducto.response.body.$.id}}, "cantidad": 1 }],
+  "forma_pago": "BITCOIN",
+  "direccion_entrega": "Av. Siempre Viva 742"
+}
+
+### Dirección con menos de 5 caracteres (RN-06)
+# esperado: 422
+POST {{baseUrl}}/pedidos
+Content-Type: application/json
+
+{
+  "items": [{ "producto_id": {{nuevoProducto.response.body.$.id}}, "cantidad": 1 }],
+  "forma_pago": "EFECTIVO",
+  "direccion_entrega": "abc"
+}
+
+### Pedido sin ítems
+# esperado: 422
+POST {{baseUrl}}/pedidos
+Content-Type: application/json
+
+{
+  "items": [],
+  "forma_pago": "EFECTIVO",
+  "direccion_entrega": "Av. Siempre Viva 742"
+}
+
+### Cantidad 0
+# esperado: 422
+POST {{baseUrl}}/pedidos
+Content-Type: application/json
+
+{
+  "items": [{ "producto_id": {{nuevoProducto.response.body.$.id}}, "cantidad": 0 }],
+  "forma_pago": "EFECTIVO",
+  "direccion_entrega": "Av. Siempre Viva 742"
+}
+
+### Mis pedidos (paginado)
+# esperado: 200
+GET {{baseUrl}}/pedidos?skip=0&limit=20
+
+### Mis pedidos filtrados por estado
+# esperado: 200
+GET {{baseUrl}}/pedidos?estado=PENDIENTE
+
+### Detalle de mi pedido con sus líneas
+# esperado: 200
+GET {{baseUrl}}/pedidos/{{pedido1.response.body.$.id}}
+
+### Pedido inexistente
+# esperado: 404
+GET {{baseUrl}}/pedidos/999999
+
+### El cliente no puede cambiar el estado (solo admin)
+# esperado: 403
+PATCH {{baseUrl}}/pedidos/{{pedido1.response.body.$.id}}/estado
+Content-Type: application/json
+
+{
+  "estado": "EN_PREPARACION"
+}
+
+### Cancelar mi pedido en PENDIENTE (RN-03: restituye el stock)
+# esperado: 200
+PATCH {{baseUrl}}/pedidos/{{pedido1.response.body.$.id}}/cancelar
+
+### El stock de la Ensalada volvió a 3
+# esperado: 200
+GET {{baseUrl}}/productos/{{nuevoProducto.response.body.$.id}}
+
+### Cancelar de nuevo: ya no está en PENDIENTE
+# esperado: 400
+PATCH {{baseUrl}}/pedidos/{{pedido1.response.body.$.id}}/cancelar
+
+### Pedido 2 (lo va a gestionar el admin)
+# @name pedido2
+# esperado: 201
+POST {{baseUrl}}/pedidos
+Content-Type: application/json
+
+{
+  "items": [{ "producto_id": {{nuevoProducto.response.body.$.id}}, "cantidad": 1 }],
+  "forma_pago": "EFECTIVO",
+  "direccion_entrega": "Calle Falsa 123"
+}
+
+### Pedido 3 (el admin lo cancela desde EN_PREPARACION)
+# @name pedido3
+# esperado: 201
+POST {{baseUrl}}/pedidos
+Content-Type: application/json
+
+{
+  "items": [{ "producto_id": {{nuevoProducto.response.body.$.id}}, "cantidad": 1 }],
+  "forma_pago": "TRANSFERENCIA",
+  "direccion_entrega": "Calle Falsa 123"
+}
+
+# ---------------------------------------------------------------------
+# 6. GESTIÓN DE PEDIDOS Y USUARIOS COMO ADMIN
+# ---------------------------------------------------------------------
+
+### Login como admin
+# esperado: 200
+POST {{baseUrl}}/auth/token
+Content-Type: application/x-www-form-urlencoded
+
+username={{adminUser}}&password={{adminPass}}
+
+### El admin ve todos los pedidos
+# esperado: 200
+GET {{baseUrl}}/pedidos
+
+### El admin ve el detalle de un pedido ajeno
+# esperado: 200
+GET {{baseUrl}}/pedidos/{{pedido2.response.body.$.id}}
+
+### /cancelar es solo para el dueño: el admin usa /estado
+# esperado: 403
+PATCH {{baseUrl}}/pedidos/{{pedido2.response.body.$.id}}/cancelar
+
+### Transición inválida PENDIENTE -> ENTREGADO (RN-02)
+# esperado: 400
+PATCH {{baseUrl}}/pedidos/{{pedido2.response.body.$.id}}/estado
+Content-Type: application/json
+
+{
+  "estado": "ENTREGADO"
+}
+
+### PENDIENTE -> EN_PREPARACION
+# esperado: 200
+PATCH {{baseUrl}}/pedidos/{{pedido2.response.body.$.id}}/estado
+Content-Type: application/json
+
+{
+  "estado": "EN_PREPARACION"
+}
+
+### EN_PREPARACION -> ENTREGADO
+# esperado: 200
+PATCH {{baseUrl}}/pedidos/{{pedido2.response.body.$.id}}/estado
+Content-Type: application/json
+
+{
+  "estado": "ENTREGADO"
+}
+
+### ENTREGADO es terminal: no se puede cancelar
+# esperado: 400
+PATCH {{baseUrl}}/pedidos/{{pedido2.response.body.$.id}}/estado
+Content-Type: application/json
+
+{
+  "estado": "CANCELADO"
+}
+
+### Estado que no existe
+# esperado: 422
+PATCH {{baseUrl}}/pedidos/{{pedido2.response.body.$.id}}/estado
+Content-Type: application/json
+
+{
+  "estado": "INVENTADO"
+}
+
+### Pedido 3: PENDIENTE -> EN_PREPARACION
+# esperado: 200
+PATCH {{baseUrl}}/pedidos/{{pedido3.response.body.$.id}}/estado
+Content-Type: application/json
+
+{
+  "estado": "EN_PREPARACION"
+}
+
+### Pedido 3: EN_PREPARACION -> CANCELADO (restituye stock)
+# esperado: 200
+PATCH {{baseUrl}}/pedidos/{{pedido3.response.body.$.id}}/estado
+Content-Type: application/json
+
+{
+  "estado": "CANCELADO"
+}
+
+### Cambiar estado de un pedido inexistente
+# esperado: 404
+PATCH {{baseUrl}}/pedidos/999999/estado
+Content-Type: application/json
+
+{
+  "estado": "EN_PREPARACION"
+}
+
+### Resumen del panel
+# esperado: 200
+GET {{baseUrl}}/pedidos/resumen
+
+### Desactivar al cliente
+# esperado: 200
+POST {{baseUrl}}/admin/usuarios/{{registro.response.body.$.id}}/desactivar
+
+### Desactivar otra vez (idempotente)
+# esperado: 200
+POST {{baseUrl}}/admin/usuarios/{{registro.response.body.$.id}}/desactivar
+
+### El cliente desactivado no puede iniciar sesión
+# esperado: 400
+POST {{baseUrl}}/auth/token
+Content-Type: application/x-www-form-urlencoded
+
+username={{registro.response.body.$.username}}&password={{clientePass}}
+
+### Login como admin otra vez
+# esperado: 200
+POST {{baseUrl}}/auth/token
+Content-Type: application/x-www-form-urlencoded
+
+username={{adminUser}}&password={{adminPass}}
+
+### Activar al cliente
+# esperado: 200
+POST {{baseUrl}}/admin/usuarios/{{registro.response.body.$.id}}/activar
+
+### Marcar la Ensalada como no disponible
+# esperado: 200
+PATCH {{baseUrl}}/productos/{{nuevoProducto.response.body.$.id}}/stock
+Content-Type: application/json
+
+{
+  "disponible": false
+}
+
+# ---------------------------------------------------------------------
+# 7. PRODUCTO NO DISPONIBLE Y BAJAS LÓGICAS
+# ---------------------------------------------------------------------
+
+### Login como cliente
+# esperado: 200
+POST {{baseUrl}}/auth/token
+Content-Type: application/x-www-form-urlencoded
+
+username={{registro.response.body.$.username}}&password={{clientePass}}
+
+### Pedido con producto no disponible
+# esperado: 400
+POST {{baseUrl}}/pedidos
+Content-Type: application/json
+
+{
+  "items": [{ "producto_id": {{nuevoProducto.response.body.$.id}}, "cantidad": 1 }],
+  "forma_pago": "EFECTIVO",
+  "direccion_entrega": "Av. Siempre Viva 742"
+}
+
+### Login como admin
+# esperado: 200
+POST {{baseUrl}}/auth/token
+Content-Type: application/x-www-form-urlencoded
+
+username={{adminUser}}&password={{adminPass}}
+
+### Baja lógica del producto
+# esperado: 204
+DELETE {{baseUrl}}/productos/{{nuevoProducto.response.body.$.id}}
+
+### El producto dado de baja se trata como inexistente
+# esperado: 404
+GET {{baseUrl}}/productos/{{nuevoProducto.response.body.$.id}}
+
+### PUT sobre producto dado de baja
+# esperado: 404
+PUT {{baseUrl}}/productos/{{nuevoProducto.response.body.$.id}}
+Content-Type: application/json
+
+{
+  "precio_base": 1
+}
+
+### PATCH de stock sobre producto dado de baja
+# esperado: 404
+PATCH {{baseUrl}}/productos/{{nuevoProducto.response.body.$.id}}/stock
+Content-Type: application/json
+
+{
+  "stock": 10
+}
+
+### DELETE de nuevo
+# esperado: 404
+DELETE {{baseUrl}}/productos/{{nuevoProducto.response.body.$.id}}
+
+### Pedido con el producto dado de baja
+# esperado: 404
+POST {{baseUrl}}/pedidos
+Content-Type: application/json
+
+{
+  "items": [{ "producto_id": {{nuevoProducto.response.body.$.id}}, "cantidad": 1 }],
+  "forma_pago": "EFECTIVO",
+  "direccion_entrega": "Av. Siempre Viva 742"
+}
+
+### Baja lógica de la categoría
+# esperado: 204
+DELETE {{baseUrl}}/categorias/{{nuevaCategoria.response.body.$.id}}
+
+### Detalle de la categoría dada de baja
+# esperado: 404
+GET {{baseUrl}}/categorias/{{nuevaCategoria.response.body.$.id}}
+
+### PUT sobre la categoría dada de baja
+# esperado: 404
+PUT {{baseUrl}}/categorias/{{nuevaCategoria.response.body.$.id}}
+Content-Type: application/json
+
+{
+  "descripcion": "no"
+}
+
+### DELETE de nuevo
+# esperado: 404
+DELETE {{baseUrl}}/categorias/{{nuevaCategoria.response.body.$.id}}
+
+### La baja no libera el nombre único
+# esperado: 409
+POST {{baseUrl}}/categorias
+Content-Type: application/json
+
+{
+  "nombre": "{{nuevaCategoria.response.body.$.nombre}}"
+}
+
+### Crear producto en una categoría dada de baja
+# esperado: 404
+POST {{baseUrl}}/productos
+Content-Type: application/json
+
+{
+  "nombre": "No debería crearse",
+  "precio_base": 100,
+  "categoria_id": {{nuevaCategoria.response.body.$.id}}
+}
+
+### Logout
+# esperado: 200
+POST {{baseUrl}}/auth/logout
+
+### Después del logout ya no hay sesión
+# esperado: 401
+GET {{baseUrl}}/auth/me
