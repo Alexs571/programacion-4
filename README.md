@@ -3,8 +3,8 @@
 Trabajo Práctico Integrador de **Programación 4** (Tecnicatura Universitaria en Programación a Distancia, UTN).
 
 - **Alumno:** Alexis da Silva
-- **Repositorio:** `⚠️ PEGAR ACÁ LA URL DEL REPOSITORIO PÚBLICO DE GITHUB` <!-- ej: https://github.com/usuario/food-store-tpi -->
-- **Video de demostración (10 a 15 min):** `⚠️ PEGAR ACÁ EL LINK PÚBLICO DEL VIDEO` <!-- YouTube no listado o Drive con acceso público -->
+- **Repositorio:** https://github.com/Alexs571/programacion-4/edit/main/README.md
+  
 
 Food Store es una aplicación web para un negocio de comidas: los clientes se registran, recorren el catálogo, arman un carrito y confirman un pedido con dirección de entrega y forma de pago (efectivo o transferencia). El administrador gestiona categorías, productos, stock, pedidos y usuarios desde un panel.
 
